@@ -1,11 +1,47 @@
 --Estimate Space for Savings
 
+/*SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[FactResellerSalesXL_Heap](
+	[ProductKey] [int] NOT NULL,
+	[OrderDateKey] [int] NOT NULL,
+	[DueDateKey] [int] NOT NULL,
+	[ShipDateKey] [int] NOT NULL,
+	[ResellerKey] [int] NOT NULL,
+	[EmployeeKey] [int] NOT NULL,
+	[PromotionKey] [int] NOT NULL,
+	[CurrencyKey] [int] NOT NULL,
+	[SalesTerritoryKey] [int] NOT NULL,
+	[SalesOrderNumber] [nvarchar](20) NOT NULL,
+	[SalesOrderLineNumber] [tinyint] NOT NULL,
+	[RevisionNumber] [tinyint] NULL,
+	[OrderQuantity] [smallint] NULL,
+	[UnitPrice] [money] NULL,
+	[ExtendedAmount] [money] NULL,
+	[UnitPriceDiscountPct] [float] NULL,
+	[DiscountAmount] [float] NULL,
+	[ProductStandardCost] [money] NULL,
+	[TotalProductCost] [money] NULL,
+	[SalesAmount] [money] NULL,
+	[TaxAmt] [money] NULL,
+	[Freight] [money] NULL,
+	[CarrierTrackingNumber] [nvarchar](25) NULL,
+	[CustomerPONumber] [nvarchar](25) NULL,
+	[OrderDate] [datetime] NULL,
+	[DueDate] [datetime] NULL,
+	[ShipDate] [datetime] NULL
+) ON [PRIMARY]
+GO
+*/
+
 USE ColumnstoreDemo
 GO
-EXEC sp_estimate_data_compression_savings 'DBO', 'BigTransaction', NULL,
+EXEC sp_estimate_data_compression_savings 'DBO', 'FactResellerSalesXL_Heap', NULL,
     NULL, 'ROW';
 
-EXEC sp_estimate_data_compression_savings 'DBO', 'BigTransaction', NULL,
+EXEC sp_estimate_data_compression_savings 'DBO', 'FactResellerSalesXL_Heap', NULL,
     NULL, 'PAGE';
 
 
@@ -58,22 +94,22 @@ ORDER BY [Percent_Scan] DESC
 
 --TurnOn Compression
 /* 
-ALTER TABLE [dbo].[bigTransactionHistory] REBUILD PARTITION = ALL
+ALTER TABLE [dbo].[FactResellerSalesXL_HeapHistory] REBUILD PARTITION = ALL
 WITH 
 (DATA_COMPRESSION = PAGE
 );
 
-ALTER INDEX [compression_index] ON [dbo].[bigTransactionHistory] 
+ALTER INDEX [compression_index] ON [dbo].[FactResellerSalesXL_HeapHistory] 
 REBUILD PARTITION = ALL WITH 
 (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, SORT_IN_TEMPDB = OFF, ONLINE = OFF, 
 ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, DATA_COMPRESSION = PAGE);
 
-ALTER TABLE [dbo].[bigTransaction_row] REBUILD PARTITION = ALL
+ALTER TABLE [dbo].[FactResellerSalesXL_Heap_row] REBUILD PARTITION = ALL
 WITH 
 (DATA_COMPRESSION = ROW
 );
 
-ALTER INDEX [compression_index_row] ON [dbo].[bigTransactionHistory_row] 
+ALTER INDEX [compression_index_row] ON [dbo].[FactResellerSalesXL_HeapHistory_row] 
 REBUILD PARTITION = ALL WITH 
 (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, SORT_IN_TEMPDB = OFF, ONLINE = OFF, 
 ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, DATA_COMPRESSION = ROW);
@@ -90,7 +126,8 @@ SELECT  b.name ,
 FROM    sys.partitions a ,
         sys.objects b
 WHERE   a.data_compression <> 0
-        AND a.object_id = b.object_id;
+        AND a.object_id = b.object_id
+        AND object_name(a.object_id) like '%FactResellerSalesXL%';
 
 /* Indicates the state of compression for each partition:
 0 = NONE
@@ -118,14 +155,14 @@ SET STATISTICS TIME ON;
 
 --Run Initial Query 
 
-SELECT  productid ,
-        transactiondate ,
-        quantity ,
-        actualcost
-FROM    bigtransaction
-WHERE   Quantity > 70
-        AND Quantity < 92
-        AND TransactionDate > '2008-01-01';
+SELECT  frs.orderdate,
+        p.EnglishProductName,
+        avg(frs.SalesAmount) AS [Avg_Sales_Amount] 
+FROM    FactResellerSalesXL_Heap FRS
+        JOIN DimProduct P ON FRS.ProductKey = P.ProductKey
+GROUP BY frs.orderdate,
+        p.EnglishProductName
+ORDER BY AVS_Sales_Amount DESC;
 
 --Show and Capture Statistics
 
@@ -134,15 +171,15 @@ EXEC dbo.show_buffers;
 
 --Run Same Query Compressed
 
-SELECT  TransactionID ,
-        productid ,
-        transactiondate ,
-        quantity ,
-        actualcost
-FROM    dbo.bigtransaction_page
-WHERE   Quantity > 70
-        AND Quantity < 92
-        AND TransactionDate > '2008-01-01';
+
+SELECT  frs.orderdate,
+        p.EnglishProductName,
+        avg(frs.SalesAmount) AS [Avg_Sales_Amount] 
+FROM    FactResellerSalesXL_PageCompressed FRS
+        JOIN DimProduct P ON FRS.ProductKey = P.ProductKey
+GROUP BY frs.orderdate,
+        p.EnglishProductName
+ORDER BY AVS_Sales_Amount DESC;
 
 --Capture Statistics and Buffers
 
@@ -151,42 +188,47 @@ EXEC dbo.show_buffers;
 
 --Show Cost of Update (Single Row)
 
-UPDATE  dbo.bigTransaction
-SET     Quantity = 89
-WHERE   TransactionID = 24018460;
+UPDATE  dbo.FactResellerSalesXL_Heap
+SET     UnitPrice = 27.293
+WHERE   SalesOrderNumber = 'SO45736';
 
-UPDATE  dbo.bigTransaction_row
-SET     Quantity = 89
-WHERE   TransactionID = 24018460;
+UPDATE  dbo.FactResellerSalesXL_Heap_row
+SET     UnitPrice = 27.293
+WHERE   SalesOrderNumber = 'SO45736';
 
-UPDATE  dbo.bigtransaction
-SET     Quantity = 89
-WHERE   TransactionID = 24018460;
+UPDATE  dbo.FactResellerSalesXL_Heap
+SET     UnitPrice = 27.293
+WHERE   SalesOrderNumber = 'SO45736';
 
 
 --Show Cost of Update (Bulk)
 
 --Page Compressed
 
+BEGIN TRANSACTION
 
-UPDATE  dbo.bigtransaction_page
-SET     Quantity = 92
-WHERE   TransactionDate > '2008-01-01'
-        AND TransactionDate < '2008-01-14';
+UPDATE  dbo.FactResellerSalesXL_Page
+SET     UnitPrice = 27.293
 
---Row Compressed 
+ROLLBACK TRANSACTION    
 
-UPDATE  dbo.bigTransaction_row
-SET     Quantity = 92
-WHERE   TransactionDate > '2008-01-01'
-        AND TransactionDate < '2008-01-14';
+--Columnstore Compressed 
+
+BEGIN TRANSACTION
+
+UPDATE  dbo.FactResellerSalesXL_CCI
+SET     UnitPrice = 27.293
+
+ROLLBACK TRANSACTION    
+
 
 --Uncompressed
+BEGIN TRANSACTION
 
-UPDATE  dbo.bigtransaction
-SET     Quantity = 92
-WHERE   TransactionDate > '2008-01-01'
-        AND TransactionDate < '2008-01-14';
+UPDATE  dbo.FactResellerSalesXL_Heap
+SET     UnitPrice = 27.293
+
+ROLLBACK TRANSACTION
 
 --Inline Compression Demos
 
@@ -214,9 +256,9 @@ ALTER TABLE People
 
 TRUNCATE TABLE cs_load_demo;
 
-INSERT INTO cs_load_demo SELECT TOP 102399 * FROM dbo.bigtransaction_cs; 
+INSERT INTO cs_load_demo SELECT TOP 102399 * FROM dbo.FactResellerSalesXL_Heap_cs; 
 
-INSERT INTO cs_load_demo SELECT TOP 1024000 * FROM dbo.bigtransaction_cs; 
+INSERT INTO cs_load_demo SELECT TOP 1024000 * FROM dbo.FactResellerSalesXL_Heap_cs; 
 
 SELECT * FROM sys.column_store_row_groups WHERE object_id=885578193
 
@@ -226,21 +268,21 @@ SELECT * FROM sys.column_store_row_groups WHERE object_id=885578193
 SELECT transactiondate
 	,avg(quantity)
 	,avg(actualcost)
-FROM bigtransaction
+FROM FactResellerSalesXL_Heap
 WHERE TransactionDate < '2007-07-01'
 	AND Quantity > 70
 	AND Quantity < 92
 GROUP BY TransactionDate
 ORDER BY transactionDate;
 
-SELECT * FROM dbo.bigtransaction_cs
+SELECT * FROM dbo.FactResellerSalesXL_Heap_cs
 
 
 --Show query performance with Columnstore Index
 SELECT transactiondate
 	,avg(quantity)
 	,avg(actualcost)
-FROM dbo.bigtransaction_cs
+FROM dbo.FactResellerSalesXL_Heap_cs
 WHERE TransactionDate < '2007-07-01'
 	AND Quantity > 70
 	AND Quantity < 92

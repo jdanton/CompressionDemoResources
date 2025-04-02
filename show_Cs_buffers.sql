@@ -5,7 +5,7 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-CREATE PROCEDURE [dbo].[show_CS_Buffer]
+CREATE OR ALTER PROCEDURE [dbo].[show_CS_Buffer]
 AS
 DECLARE @dbid INT;
 DECLARE @offset INT;

@@ -7,7 +7,7 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 
-CREATE PROCEDURE [dbo].[show_buffers]
+CREATE OR ALTER PROCEDURE [dbo].[show_buffers]
 as
 WITH src AS
 (
